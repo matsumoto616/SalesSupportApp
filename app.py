@@ -10,7 +10,7 @@ st.set_page_config(layout="wide")
 
 # .envファイルから環境変数をロード
 load_dotenv()
-version = os.getenv("VERSION", "unknown")  # バージョン番号を取得
+version = os.getenv("VERSION", "demo")  # バージョン番号を取得
 
 # サイドバーの設定
 sidebar = st.sidebar
