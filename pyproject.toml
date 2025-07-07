@@ -1,0 +1,15 @@
+[project]
+name = "salessupportapp"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "dotenv>=0.9.9",
+    "jijmodeling>=1.13.0",
+    "numpy>=1.26.4",
+    "ommx-openjij-adapter>=2.0.2",
+    "openjij>=0.9.2",
+    "pandas>=2.3.0",
+    "streamlit>=1.46.1",
+]

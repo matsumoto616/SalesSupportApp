@@ -1,3 +1,5 @@
+import pandas as pd
+import numpy as np
 import hashlib
 
 def simple_text_embedder(text, dim=10):
@@ -18,18 +20,21 @@ def simple_image_embedder(filename, dim=10):
     arr = np.frombuffer(h, dtype=np.uint8)[:dim]
     return arr.astype(float) / 255.0
 
-import pandas as pd
-import numpy as np
-
 class Encoder:
     """
     企業情報CSVから特徴量ベクトルを生成するクラス。
     """
-    def __init__(self, csv_path: str):
-        self.csv_path = csv_path
-        self.df = pd.read_csv(csv_path)
+    def __init__(self, df: pd.DataFrame):
+        self.df = df.copy()
 
-    def encode(self, text_embedder=None, image_embedder=None):
+        # 必要なカラムが存在するかチェック
+        # required_columns = ['企業名', '業種', '資本金(百万円)', '従業員数', '備考', '画像']
+        required_columns = ['企業名', '業種', '資本金(百万円)', '従業員数', '備考']
+        for col in required_columns:            
+            if col not in self.df.columns:
+                raise ValueError(f"DataFrameに必要なカラム '{col}' が存在しません。")
+
+    def encode(self, text_embedder=simple_text_embedder, image_embedder=simple_text_embedder):
         """
         企業情報をベクトル化して返す。
         テキスト・画像カラムもエンコード可能。
@@ -44,11 +49,12 @@ class Encoder:
         employees = self.df['従業員数'].fillna(0).astype(float).values.reshape(-1, 1)
 
         # 業種をone-hotエンコーディング
-        industry_onehot = pd.get_dummies(self.df['業種'], prefix='業種')
+        # industry_onehot = pd.get_dummies(self.df['業種'], prefix='業種')
 
         # 企業名・備考（テキスト）
         if text_embedder is not None:
             name_vecs = np.vstack([text_embedder(str(x)) for x in self.df['企業名']])
+            industry_vecs = np.vstack([text_embedder(str(x)) for x in self.df['業種']])
             note_vecs = np.vstack([text_embedder(str(x)) for x in self.df['備考']])
         else:
             # デフォルト: ゼロベクトル
@@ -56,24 +62,18 @@ class Encoder:
             note_vecs = np.zeros((len(self.df), 10))
 
         # 画像（画像ファイル名→ベクトル）
-        if image_embedder is not None:
-            image_vecs = np.vstack([image_embedder(str(x)) if pd.notnull(x) else np.zeros(10) for x in self.df['画像']])
-        else:
-            image_vecs = np.zeros((len(self.df), 10))
+        # if image_embedder is not None:
+        #     image_vecs = np.vstack([image_embedder(str(x)) if pd.notnull(x) else np.zeros(10) for x in self.df['画像']])
+        # else:
+        #     image_vecs = np.zeros((len(self.df), 10))
 
         # ベクトル結合
         features = np.hstack([
             capital,
             employees,
-            industry_onehot.values,
+            industry_vecs,
             name_vecs,
             note_vecs,
-            image_vecs
+            # image_vecs
         ])
         return features
-
-    def get_company_names(self):
-        """
-        企業名リストを返す
-        """
-        return self.df['企業名'].tolist()
