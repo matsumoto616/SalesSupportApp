@@ -27,7 +27,7 @@ mode = sidebar.radio("モード選択", ["新規営業", "有料移行サポー�
 K = sidebar.number_input("レコメンド数", min_value=1, max_value=10, value=5, step=1)
 L = sidebar.number_input("参照過去事例数", min_value=1, max_value=10, value=5, step=1)
 log_lambda_d = sidebar.number_input("多様性重要度　log(λ_d)", min_value=-5, max_value=5, value=0, step=1)
-log_lamnda_c = sidebar.number_input("制約条件重要度　log(λ_c)", min_value=-5, max_value=5, value=0, step=1)
+log_lamnda_c = sidebar.number_input("制約条件重要度　log(λ_c)", min_value=0, max_value=5, value=2, step=1)
 
 # 対象顧客の入力
 st.subheader("対象顧客情報")
@@ -50,10 +50,8 @@ target_df = pd.DataFrame([target_info])
 # 検索ボタン
 button_pushed = st.button("過去事例検索")
 
-# 過去事例の表示
-st.subheader("過去事例")
+
 archive_df = pd.read_csv("./db/companies_archive.csv")
-st.dataframe(archive_df, use_container_width=True, hide_index=True)
 
 # レコメンド
 if button_pushed:
@@ -83,6 +81,11 @@ if button_pushed:
 
     # 選ばれた行だけ表示
     selected_df = archive_df.loc[nonzero_keys]
-    st.subheader("類似する過去事例")
+    st.subheader("参考となる過去事例")
     st.dataframe(selected_df, use_container_width=True, hide_index=True)
     print("最適化結果:", nonzero_keys)
+
+# 過去事例の表示
+st.divider()
+st.subheader("過去事例一覧")
+st.dataframe(archive_df, use_container_width=True, hide_index=True)
