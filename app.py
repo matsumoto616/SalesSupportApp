@@ -76,7 +76,11 @@ archive_df = pd.read_csv("./db/companies_archive.csv")
 # レコメンド
 if button_pushed:
     encoder = Encoder()
-    encoder.load_weights("./weights/triplet_encoder.pth")
+    try:
+        encoder.load_weights("./weights/triplet_encoder.pth")
+    except FileNotFoundError:
+        st.error("現在調整中です")
+        st.stop()
     encoder.eval()
     tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")
     archive_dataset = CompanyDataset(archive_df, tokenizer)
