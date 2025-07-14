@@ -1,79 +1,122 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.data import DataLoader
+from torchvision import models
+from transformers import AutoModel, AutoTokenizer
 import pandas as pd
-import numpy as np
-import hashlib
 
-def simple_text_embedder(text, dim=10):
-    """
-    テキストをハッシュ化し、dim次元のベクトルに変換（簡易実装）
-    """
-    h = hashlib.sha256(text.encode('utf-8')).digest()
-    arr = np.frombuffer(h, dtype=np.uint8)[:dim]
-    return arr.astype(float) / 255.0
+from data import TripletCompanyDataset
 
-def simple_image_embedder(filename, dim=10):
-    """
-    画像ファイル名をハッシュ化し、dim次元のベクトルに変換（簡易実装）
-    """
-    if not filename or filename == 'nan':
-        return np.zeros(dim)
-    h = hashlib.sha256(filename.encode('utf-8')).digest()
-    arr = np.frombuffer(h, dtype=np.uint8)[:dim]
-    return arr.astype(float) / 255.0
 
-class Encoder:
-    """
-    企業情報CSVから特徴量ベクトルを生成するクラス。
-    """
-    def __init__(self, df: pd.DataFrame):
-        self.df = df.copy()
+class Encoder(nn.Module):
+    def __init__(self, text_model="distilbert-base-uncased", 
+                 image_output_dim=128, text_output_dim=128, numeric_output_dim=64, final_dim=16):
+        super().__init__()
 
-        # 必要なカラムが存在するかチェック
-        # required_columns = ['企業名', '業種', '資本金(百万円)', '従業員数', '備考', '画像']
-        required_columns = ['企業名', '業種', '資本金(百万円)', '従業員数', '備考']
-        for col in required_columns:            
-            if col not in self.df.columns:
-                raise ValueError(f"DataFrameに必要なカラム '{col}' が存在しません。")
+        # Encoder部分
+        resnet = models.resnet18(pretrained=True)
+        self.image_encoder = nn.Sequential(*list(resnet.children())[:-1])
+        self.image_fc = nn.Linear(512, image_output_dim)
 
-    def encode(self, text_embedder=simple_text_embedder, image_embedder=simple_text_embedder):
+        self.text_bert = AutoModel.from_pretrained(text_model)
+        self.text_fc = nn.Linear(self.text_bert.config.hidden_size, text_output_dim)
+
+        self.numeric_encoder = nn.Sequential(
+            nn.Linear(2, 32),
+            nn.ReLU(),
+            nn.Linear(32, numeric_output_dim)
+        )
+
+        self.fusion = nn.Sequential(
+            nn.Linear(image_output_dim + text_output_dim + numeric_output_dim, 256),
+            nn.ReLU(),
+            nn.Linear(256, final_dim)
+        )
+
+        # Decoder部分（AutoEncoder用）
+        self.decoder = nn.Sequential(
+            nn.Linear(final_dim, 256),
+            nn.ReLU(),
+            nn.Linear(256, image_output_dim + text_output_dim + numeric_output_dim)
+        )
+
+    def load_weights(self, path, device='cpu'):
         """
-        企業情報をベクトル化して返す。
-        テキスト・画像カラムもエンコード可能。
-        Args:
-            text_embedder (callable): テキスト→ベクトル変換関数（例: lambda x: np.zeros(10)）
-            image_embedder (callable): 画像ファイル名→ベクトル変換関数
-        Returns:
-            np.ndarray: shape=(企業数, 特徴量数)
+        学習済み重みをロードする（推論時用）
         """
-        # 数値特徴量
-        capital = self.df['資本金(百万円)'].fillna(0).astype(float).values.reshape(-1, 1)
-        employees = self.df['従業員数'].fillna(0).astype(float).values.reshape(-1, 1)
+        self.load_state_dict(torch.load(path, map_location=device))
+        self.eval()
 
-        # 業種をone-hotエンコーディング
-        # industry_onehot = pd.get_dummies(self.df['業種'], prefix='業種')
+    def forward(self, image, input_ids, attention_mask, numeric):
+        # Encoder
+        img_feat = self.image_encoder(image).view(image.size(0), -1)
+        img_vec = self.image_fc(img_feat)
 
-        # 企業名・備考（テキスト）
-        if text_embedder is not None:
-            name_vecs = np.vstack([text_embedder(str(x)) for x in self.df['企業名']])
-            industry_vecs = np.vstack([text_embedder(str(x)) for x in self.df['業種']])
-            note_vecs = np.vstack([text_embedder(str(x)) for x in self.df['備考']])
-        else:
-            # デフォルト: ゼロベクトル
-            name_vecs = np.zeros((len(self.df), 10))
-            note_vecs = np.zeros((len(self.df), 10))
+        txt_feat = self.text_bert(input_ids=input_ids, attention_mask=attention_mask).last_hidden_state[:, 0, :]
+        txt_vec = self.text_fc(txt_feat)
 
-        # 画像（画像ファイル名→ベクトル）
-        # if image_embedder is not None:
-        #     image_vecs = np.vstack([image_embedder(str(x)) if pd.notnull(x) else np.zeros(10) for x in self.df['画像']])
-        # else:
-        #     image_vecs = np.zeros((len(self.df), 10))
+        num_vec = self.numeric_encoder(numeric)
 
-        # ベクトル結合
-        features = np.hstack([
-            capital,
-            employees,
-            industry_vecs,
-            name_vecs,
-            note_vecs,
-            # image_vecs
-        ])
-        return features
+        fused = torch.cat([img_vec, txt_vec, num_vec], dim=1)
+        z = self.fusion(fused)
+
+        # Decoder（再構成）
+        recon = self.decoder(z)
+
+        # それぞれのベクトルも返す
+        return z, recon, fused
+
+def triplet_loss(anchor, positive, negative, margin=1.0):
+    d_ap = F.pairwise_distance(anchor, positive, p=2)
+    d_an = F.pairwise_distance(anchor, negative, p=2)
+    return F.relu(d_ap - d_an + margin).mean()
+
+
+def train_encoder(model, dataset, epochs=5, batch_size=8, lr=1e-4, device='cpu'):
+    model = model.to(device)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+
+    for epoch in range(epochs):
+        model.train()
+        total_loss = 0
+        for batch in dataloader:
+            # batch: ((img_a, id_a, mask_a, num_a), (img_p, id_p, mask_p, num_p), (img_n, id_n, mask_n, num_n))
+            (img_a, id_a, mask_a, num_a), (img_p, id_p, mask_p, num_p), (img_n, id_n, mask_n, num_n) = batch
+            img_a, id_a, mask_a, num_a = img_a.to(device), id_a.to(device), mask_a.to(device), num_a.to(device)
+            img_p, id_p, mask_p, num_p = img_p.to(device), id_p.to(device), mask_p.to(device), num_p.to(device)
+            img_n, id_n, mask_n, num_n = img_n.to(device), id_n.to(device), mask_n.to(device), num_n.to(device)
+
+            # AutoEncoder loss for anchor
+            z_a, recon_a, orig_a = model(img_a, id_a, mask_a, num_a)
+            ae_loss = F.mse_loss(recon_a, orig_a)
+
+            # Triplet loss (unsupervised distance learning)
+            z_p, _, _, = model(img_p, id_p, mask_p, num_p)
+            z_n, _, _, = model(img_n, id_n, mask_n, num_n)
+            trip_loss = triplet_loss(z_a, z_p, z_n)
+
+            loss = ae_loss + trip_loss
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item()
+
+        print(f"[Epoch {epoch+1}/{epochs}] Loss: {total_loss/len(dataloader):.4f}")
+
+    return model
+
+
+if __name__ == "__main__":
+    # Example usage
+    df = pd.read_csv("./db/companies_archive.csv")  # Load your dataset here
+    tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")
+    dataset = TripletCompanyDataset(df, tokenizer)
+
+    model = Encoder()
+    trained_model = train_encoder(model, dataset, epochs=10, batch_size=8, lr=1e-4, device='cuda' if torch.cuda.is_available() else 'cpu')
+    
+    # Save the trained model
+    torch.save(trained_model.state_dict(), "./weights/triplet_encoder.pth")

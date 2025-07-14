@@ -65,22 +65,24 @@ class Optimizer:
         
     def calculate_similarity(self):
         """
-        Calculate the cosine similarity between the target vector and each vector in the archive.
+        Calculate the 2-norm (Euclidean distance) similarity between the target vector and each vector in the archive.
         Returns:
-            similarities (np.ndarray): Array of cosine similarities.
+            similarities (np.ndarray): Array of negative Euclidean distances (similarity).
         """
-        # 正規化（ゼロ割防止のため微小値を加算）
-        archive_norm = np.linalg.norm(self.archive_vecs, axis=1) + 1e-10
-        target_norm = np.linalg.norm(self.target_vec) + 1e-10
-        # コサイン類似度計算
-        pq_similarities = np.dot(self.archive_vecs, self.target_vec) / (archive_norm * target_norm)
+        # 2ノルム距離（Euclidean distance）
+        pq_distances = np.linalg.norm(self.archive_vecs - self.target_vec, axis=1)
+        # 類似度として負の距離を使う（距離が小さいほど類似度が高い）
+        pq_similarities = -pq_distances
 
-        # archive_vecs同士のコサイン類似度行列を計算
-        # (N, D) @ (D, N) = (N, N)
-        dot_products = np.dot(self.archive_vecs, self.archive_vecs.T)
-        norm_matrix = np.outer(archive_norm, archive_norm)
-        pp_similarities = dot_products / (norm_matrix + 1e-10)
-                
+        # archive_vecs同士の2ノルム距離行列
+        # (N, D) - (N, D) の全組み合わせ
+        N = self.archive_vecs.shape[0]
+        pp_distances = np.zeros((N, N))
+        for i in range(N):
+            for j in range(N):
+                pp_distances[i, j] = np.linalg.norm(self.archive_vecs[i] - self.archive_vecs[j])
+        pp_similarities = -pp_distances
+
         return pq_similarities, pp_similarities
 
     def create_qubo(self, pq_similarities, pp_similarities):
@@ -99,15 +101,15 @@ class Optimizer:
         p2 = jm.Element("p2", belong_to=(0, pp_similarities.shape[0] - 1))
 
         problem = jm.Problem("SalesSupportOptimization")
-        problem += jm.sum(p, a[p] * s_target[p] * x[p]) - lambda_d * jm.sum([p1,p2], s_archive[p1,p2] * x[p1] * x[p2])
+        problem += - jm.sum(p, a[p] * s_target[p] * x[p]) + lambda_d * jm.sum([p1,p2], s_archive[p1,p2] * x[p1] * x[p2])
         problem += jm.Constraint("num_selected", jm.sum(p, x[p]) == L)
 
         instance_data = {
-            "a": np.ones(self.archive_vecs.shape[0]),
-            "s_target": pq_similarities,
-            "s_archive": pp_similarities,
-            "lambda_d": self.config.lambda_d,
-            "L": self.config.L
+            "a": np.ones(self.archive_vecs.shape[0]).tolist(),
+            "s_target": pq_similarities.tolist(),
+            "s_archive": pp_similarities.tolist(),
+            "lambda_d": float(self.config.lambda_d),
+            "L": int(self.config.L)
         }
         interpreter = jm.Interpreter(instance_data)
         instance = interpreter.eval_problem(problem)
@@ -121,6 +123,7 @@ class Optimizer:
         Perform the optimization based on the current configuration.
         """
         pq_similarities, pp_similarities = self.calculate_similarity()
+        print(pq_similarities)
         qubo, adapter = self.create_qubo(pq_similarities, pp_similarities)
         sampler = oj.SASampler()
         res = sampler.sample_qubo(Q=qubo, num_reads=100)

@@ -2,8 +2,28 @@ import os
 from dotenv import load_dotenv  # .envファイルから環境変数を読み込む
 import streamlit as st  # Streamlit本体
 import pandas as pd
+import torch
+from transformers import AutoModel, AutoTokenizer
 from optimizer import OptimizerConfig, Optimizer
 from encoder import Encoder
+from data import CompanyDataset
+
+def encode_dataset(encoder, dataset, device="cpu", batch_size=32):
+    encoder.eval()
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=False)
+    all_vecs = []
+    with torch.no_grad():
+        for batch in dataloader:
+            # batch: (img, input_ids, attn_mask, numeric)
+            img, input_ids, attn_mask, numeric = batch
+            img = img.to(device)
+            input_ids = input_ids.to(device)
+            attn_mask = attn_mask.to(device)
+            numeric = numeric.to(device)
+            z, _, _ = encoder(img, input_ids, attn_mask, numeric)
+            all_vecs.append(z.cpu())
+    all_vecs = torch.cat(all_vecs, dim=0)
+    return all_vecs.numpy()
 
 # Streamlitのページ設定（ワイド画面をデフォルトに）
 st.set_page_config(layout="wide")
@@ -24,7 +44,7 @@ sidebar.divider()
 
 # サイドバーの各種入力項目
 mode = sidebar.radio("モード選択", ["新規営業", "有料移行サポート", "離脱防止サポート"])
-K = sidebar.number_input("レコメンド数", min_value=1, max_value=10, value=5, step=1)
+# K = sidebar.number_input("レコメンド数", min_value=1, max_value=10, value=5, step=1)
 L = sidebar.number_input("参照過去事例数", min_value=1, max_value=10, value=5, step=1)
 log_lambda_d = sidebar.number_input("多様性重要度　log(λ_d)", min_value=-5, max_value=5, value=0, step=1)
 log_lamnda_c = sidebar.number_input("制約条件重要度　log(λ_c)", min_value=0, max_value=5, value=2, step=1)
@@ -55,20 +75,26 @@ archive_df = pd.read_csv("./db/companies_archive.csv")
 
 # レコメンド
 if button_pushed:
-    # 過去事例のベクトルを取得
-    archive_encoder = Encoder(archive_df)
-    archive_vecs = archive_encoder.encode()
+    encoder = Encoder()
+    encoder.load_weights("./weights/triplet_encoder.pth")
+    encoder.eval()
+    tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")
+    archive_dataset = CompanyDataset(archive_df, tokenizer)
+    target_dataset = CompanyDataset(target_df, tokenizer)
 
-    # 対象顧客のベクトルを取得
-    target_encoder = Encoder(target_df)
-    target_vec = target_encoder.encode().flatten()
+    device = "cpu"
+    encoder = encoder.to(device)
+
+    with torch.no_grad():
+        archive_vecs = encode_dataset(encoder, archive_dataset, device=device)
+        target_vec = encode_dataset(encoder, target_dataset, device=device).flatten()  # 1件のみ
 
     # 入力値を取得
     lambda_d = 10 ** log_lambda_d
     lambda_c = 10 ** log_lamnda_c
 
     # OptimizerConfigのインスタンスを作成
-    config = OptimizerConfig(mode=mode, K=K, L=L, lambda_d=lambda_d, lambda_c=lambda_c)
+    config = OptimizerConfig(mode=mode, L=L, lambda_d=lambda_d, lambda_c=lambda_c)
 
     # Optimizerのインスタンスを作成
     optimizer = Optimizer(archive_vecs, target_vec, config)
