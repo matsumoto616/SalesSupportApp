@@ -123,10 +123,9 @@ class Optimizer:
         Perform the optimization based on the current configuration.
         """
         pq_similarities, pp_similarities = self.calculate_similarity()
-        print(pq_similarities)
         qubo, adapter = self.create_qubo(pq_similarities, pp_similarities)
         sampler = oj.SASampler()
-        res = sampler.sample_qubo(Q=qubo, num_reads=100)
+        res = sampler.sample_qubo(Q=qubo, num_reads=100, num_sweeps=1000)
         sampleset = adapter.decode_to_sampleset(res)
         best_sample = sampleset.best_feasible_unrelaxed
 

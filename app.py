@@ -7,6 +7,7 @@ from transformers import AutoModel, AutoTokenizer
 from optimizer import OptimizerConfig, Optimizer
 from encoder import Encoder
 from data import CompanyDataset
+import gdown
 
 def encode_dataset(encoder, dataset, device="cpu", batch_size=32):
     encoder.eval()
@@ -46,8 +47,8 @@ sidebar.divider()
 mode = sidebar.radio("モード選択", ["新規営業", "有料移行サポート", "離脱防止サポート"])
 # K = sidebar.number_input("レコメンド数", min_value=1, max_value=10, value=5, step=1)
 L = sidebar.number_input("参照過去事例数", min_value=1, max_value=10, value=5, step=1)
-log_lambda_d = sidebar.number_input("多様性重要度　log(λ_d)", min_value=-5, max_value=5, value=0, step=1)
-log_lamnda_c = sidebar.number_input("制約条件重要度　log(λ_c)", min_value=0, max_value=5, value=2, step=1)
+log_lambda_d = sidebar.number_input("多様性重要度　log(λ_d)", min_value=-5, max_value=5, value=-1, step=1)
+log_lamnda_c = sidebar.number_input("制約条件重要度　log(λ_c)", min_value=0, max_value=5, value=3, step=1)
 
 # 対象顧客の入力
 st.subheader("対象顧客情報")
@@ -77,10 +78,18 @@ archive_df = pd.read_csv("./db/companies_archive.csv")
 if button_pushed:
     encoder = Encoder()
     try:
-        encoder.load_weights("./weights/triplet_encoder.pth")
+        encoder.load_weights(path="./weights/triplet_encoder.pth")
     except FileNotFoundError:
-        st.error("現在調整中です")
-        st.stop()
+        # Google Driveの重みファイルID
+        gdrive_url = "https://drive.google.com/uc?id=1a1PPVXInIcNsOJSM7JgEvcRmY7y8FyVD"
+        weights_path = "triplet_encoder.pth"
+        # weightsディレクトリがなければ作成
+        # os.makedirs(os.path.dirname(weights_path), exist_ok=True)
+        # 重みファイルがなければgdownでダウンロード
+        if not os.path.exists(weights_path):
+            with st.spinner("重みファイルをダウンロード中..."):
+                gdown.download(gdrive_url, weights_path, quiet=False)
+        encoder.load_weights(weights_path)
     encoder.eval()
     tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")
     archive_dataset = CompanyDataset(archive_df, tokenizer)

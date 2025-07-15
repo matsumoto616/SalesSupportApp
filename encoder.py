@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torchvision import models
+from torchvision.models import ResNet18_Weights
 from transformers import AutoModel, AutoTokenizer
 import pandas as pd
 
@@ -15,7 +16,7 @@ class Encoder(nn.Module):
         super().__init__()
 
         # Encoder部分
-        resnet = models.resnet18(pretrained=True)
+        resnet = models.resnet18(weights=ResNet18_Weights.DEFAULT)
         self.image_encoder = nn.Sequential(*list(resnet.children())[:-1])
         self.image_fc = nn.Linear(512, image_output_dim)
 
@@ -119,4 +120,4 @@ if __name__ == "__main__":
     trained_model = train_encoder(model, dataset, epochs=10, batch_size=8, lr=1e-4, device='cuda' if torch.cuda.is_available() else 'cpu')
     
     # Save the trained model
-    torch.save(trained_model.state_dict(), "./weights/triplet_encoder.pth")
+    torch.save(trained_model.state_dict(), "./weights/encoder.pth")
