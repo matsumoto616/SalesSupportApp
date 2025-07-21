@@ -17,8 +17,9 @@ class Encoder(nn.Module):
 
         # Encoder部分
         resnet = models.resnet18(weights=ResNet18_Weights.DEFAULT)
-        self.image_encoder = nn.Sequential(*list(resnet.children())[:-1])
-        self.image_fc = nn.Linear(512, image_output_dim)
+        # self.image_encoder = nn.Sequential(*list(resnet.children())[:-1])
+        # self.image_fc = nn.Linear(512, image_output_dim)
+        image_output_dim = 0
 
         self.text_bert = AutoModel.from_pretrained(text_model)
         self.text_fc = nn.Linear(self.text_bert.config.hidden_size, text_output_dim)
@@ -35,13 +36,6 @@ class Encoder(nn.Module):
             nn.Linear(256, final_dim)
         )
 
-        # Decoder部分（AutoEncoder用）
-        self.decoder = nn.Sequential(
-            nn.Linear(final_dim, 256),
-            nn.ReLU(),
-            nn.Linear(256, image_output_dim + text_output_dim + numeric_output_dim)
-        )
-
     def load_weights(self, path, device='cpu'):
         """
         学習済み重みをロードする（推論時用）
@@ -49,24 +43,22 @@ class Encoder(nn.Module):
         self.load_state_dict(torch.load(path, map_location=device))
         self.eval()
 
-    def forward(self, image, input_ids, attention_mask, numeric):
+    def forward(self, input_ids, attention_mask, numeric):
         # Encoder
-        img_feat = self.image_encoder(image).view(image.size(0), -1)
-        img_vec = self.image_fc(img_feat)
+        # img_feat = self.image_encoder(image).view(image.size(0), -1)
+        # img_vec = self.image_fc(img_feat)
 
         txt_feat = self.text_bert(input_ids=input_ids, attention_mask=attention_mask).last_hidden_state[:, 0, :]
         txt_vec = self.text_fc(txt_feat)
 
         num_vec = self.numeric_encoder(numeric)
 
-        fused = torch.cat([img_vec, txt_vec, num_vec], dim=1)
+        # fused = torch.cat([img_vec, txt_vec, num_vec], dim=1)
+        fused = torch.cat([txt_vec, num_vec], dim=1)
         z = self.fusion(fused)
 
-        # Decoder（再構成）
-        recon = self.decoder(z)
-
         # それぞれのベクトルも返す
-        return z, recon, fused
+        return z, fused
 
 def triplet_loss(anchor, positive, negative, margin=1.0):
     d_ap = F.pairwise_distance(anchor, positive, p=2)
@@ -74,50 +66,73 @@ def triplet_loss(anchor, positive, negative, margin=1.0):
     return F.relu(d_ap - d_an + margin).mean()
 
 
-def train_encoder(model, dataset, epochs=5, batch_size=8, lr=1e-4, device='cpu'):
+def train_encoder(model, dataset, epochs=5, batch_size=8, lr=1e-4, device='cpu', test_ratio=0.2):
+    from torch.utils.data import random_split, DataLoader
     model = model.to(device)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    # データ分割
+    n_total = len(dataset)
+    n_test = int(n_total * test_ratio)
+    n_train = n_total - n_test
+    train_set, test_set = random_split(dataset, [n_train, n_test], generator=torch.Generator().manual_seed(42))
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
+    test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
+    best_test_loss = float('inf')
+    best_weights = None
     for epoch in range(epochs):
+        # --- Training ---
         model.train()
-        total_loss = 0
-        for batch in dataloader:
-            # batch: ((img_a, id_a, mask_a, num_a), (img_p, id_p, mask_p, num_p), (img_n, id_n, mask_n, num_n))
-            (img_a, id_a, mask_a, num_a), (img_p, id_p, mask_p, num_p), (img_n, id_n, mask_n, num_n) = batch
-            img_a, id_a, mask_a, num_a = img_a.to(device), id_a.to(device), mask_a.to(device), num_a.to(device)
-            img_p, id_p, mask_p, num_p = img_p.to(device), id_p.to(device), mask_p.to(device), num_p.to(device)
-            img_n, id_n, mask_n, num_n = img_n.to(device), id_n.to(device), mask_n.to(device), num_n.to(device)
+        train_loss = 0
+        for batch in train_loader:
+            (id_a, mask_a, num_a), (id_p, mask_p, num_p), (id_n, mask_n, num_n) = batch
+            id_a, mask_a, num_a = id_a.to(device), mask_a.to(device), num_a.to(device)
+            id_p, mask_p, num_p = id_p.to(device), mask_p.to(device), num_p.to(device)
+            id_n, mask_n, num_n = id_n.to(device), mask_n.to(device), num_n.to(device)
 
-            # AutoEncoder loss for anchor
-            z_a, recon_a, orig_a = model(img_a, id_a, mask_a, num_a)
-            ae_loss = F.mse_loss(recon_a, orig_a)
-
-            # Triplet loss (unsupervised distance learning)
-            z_p, _, _, = model(img_p, id_p, mask_p, num_p)
-            z_n, _, _, = model(img_n, id_n, mask_n, num_n)
+            z_a, _, = model(id_a, mask_a, num_a)
+            z_p, _, = model(id_p, mask_p, num_p)
+            z_n, _, = model(id_n, mask_n, num_n)
             trip_loss = triplet_loss(z_a, z_p, z_n)
-
-            loss = ae_loss + trip_loss
+            loss = trip_loss
 
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            total_loss += loss.item()
+            train_loss += loss.item()
 
-        print(f"[Epoch {epoch+1}/{epochs}] Loss: {total_loss/len(dataloader):.4f}")
+        # --- Evaluation ---
+        model.eval()
+        test_loss = 0
+        with torch.no_grad():
+            for batch in test_loader:
+                (id_a, mask_a, num_a), (id_p, mask_p, num_p), (id_n, mask_n, num_n) = batch
+                id_a, mask_a, num_a = id_a.to(device), mask_a.to(device), num_a.to(device)
+                id_p, mask_p, num_p = id_p.to(device), mask_p.to(device), num_p.to(device)
+                id_n, mask_n, num_n = id_n.to(device), mask_n.to(device), num_n.to(device)
 
-    return model
+                z_a, _, = model(id_a, mask_a, num_a)
+                z_p, _, = model(id_p, mask_p, num_p)
+                z_n, _, = model(id_n, mask_n, num_n)
+                trip_loss = triplet_loss(z_a, z_p, z_n)
+                loss = trip_loss
+                test_loss += loss.item()
 
+        avg_train_loss = train_loss / len(train_loader)
+        avg_test_loss = test_loss / len(test_loader)
+        print(f"[Epoch {epoch+1}/{epochs}] Train Loss: {avg_train_loss:.4f} | Test Loss: {avg_test_loss:.4f}")
+
+        # ベストな重みを保存
+        if avg_test_loss < best_test_loss:
+            best_test_loss = avg_test_loss
+            best_weights = model.state_dict()
+            torch.save(best_weights, "./weights/triplet_encoder_best.pth")
 
 if __name__ == "__main__":
     # Example usage
-    df = pd.read_csv("./db/companies_archive.csv")  # Load your dataset here
+    df = pd.read_csv("./db/companies_archive_rev.csv")  # Load your dataset here
     tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")
     dataset = TripletCompanyDataset(df, tokenizer)
 
     model = Encoder()
-    trained_model = train_encoder(model, dataset, epochs=10, batch_size=8, lr=1e-4, device='cuda' if torch.cuda.is_available() else 'cpu')
-    
-    # Save the trained model
-    torch.save(trained_model.state_dict(), "./weights/encoder.pth")
+    train_encoder(model, dataset, epochs=20, batch_size=8, lr=1e-4, device='cuda' if torch.cuda.is_available() else 'cpu')

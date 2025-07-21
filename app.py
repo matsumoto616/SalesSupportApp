@@ -15,13 +15,12 @@ def encode_dataset(encoder, dataset, device="cpu", batch_size=32):
     all_vecs = []
     with torch.no_grad():
         for batch in dataloader:
-            # batch: (img, input_ids, attn_mask, numeric)
-            img, input_ids, attn_mask, numeric = batch
-            img = img.to(device)
+            # batch: (input_ids, attn_mask, numeric)
+            input_ids, attn_mask, numeric = batch
             input_ids = input_ids.to(device)
             attn_mask = attn_mask.to(device)
             numeric = numeric.to(device)
-            z, _, _ = encoder(img, input_ids, attn_mask, numeric)
+            z, _, = encoder(input_ids, attn_mask, numeric)
             all_vecs.append(z.cpu())
     all_vecs = torch.cat(all_vecs, dim=0)
     return all_vecs.numpy()
@@ -60,7 +59,7 @@ st.markdown(
 # 対象顧客の情報を入力するためのテキスト入力フィールド
 target_info = {
     "企業名": st.text_input("企業名", placeholder="例: 株式会社サンプル"),
-    "従業員数": st.number_input("従業員数", min_value=1, max_value=100000, value=1000, step=1),
+    "従業員数": st.number_input("従業員数", min_value=1, max_value=10000, value=100, step=1),
     "資本金(百万円)": st.number_input("資本金(百万円)", min_value=0, max_value=10000, value=100, step=1),
     "業種": st.text_input("業種", placeholder="例: IT, 製造"),
     "備考": st.text_area("備考", placeholder="例: 特記事項やニーズなど"),
@@ -78,11 +77,11 @@ archive_df = pd.read_csv("./db/companies_archive.csv")
 if button_pushed:
     encoder = Encoder()
     try:
-        encoder.load_weights(path="./weights/triplet_encoder.pth")
+        encoder.load_weights(path="./weights/triplet_encoder_best.pth")
     except FileNotFoundError:
         # Google Driveの重みファイルID
         gdrive_url = "https://drive.google.com/uc?id=1a1PPVXInIcNsOJSM7JgEvcRmY7y8FyVD"
-        weights_path = "triplet_encoder.pth"
+        weights_path = "triplet_encoder_best.pth"
         # weightsディレクトリがなければ作成
         # os.makedirs(os.path.dirname(weights_path), exist_ok=True)
         # 重みファイルがなければgdownでダウンロード
