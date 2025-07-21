@@ -47,7 +47,7 @@ mode = sidebar.radio("モード選択", ["多様性考慮（2次計画）", "多
 # K = sidebar.number_input("レコメンド数", min_value=1, max_value=10, value=5, step=1)
 L = sidebar.number_input("参照過去事例数", min_value=1, max_value=10, value=5, step=1)
 log_lambda_d = sidebar.number_input("多様性重要度　log(λ_d)　※2次計画時のみ", min_value=-5, max_value=5, value=-1, step=1)
-log_lamnda_c = sidebar.number_input("制約条件重要度　log(λ_c)　※2次計画時のみ", min_value=0, max_value=5, value=3, step=1)
+log_lamnda_c = sidebar.number_input("制約条件重要度　log(λ_c)　※2次計画時のみ", min_value=0, max_value=5, value=2, step=1)
 
 # 対象顧客の入力
 st.subheader("対象顧客情報")
@@ -58,11 +58,11 @@ st.markdown(
 )
 # 対象顧客の情報を入力するためのテキスト入力フィールド
 target_info = {
-    "企業名": st.text_input("企業名", placeholder="例: 株式会社サンプル"),
-    "従業員数": st.number_input("従業員数", min_value=1, max_value=10000, value=100, step=1),
-    "資本金(百万円)": st.number_input("資本金(百万円)", min_value=0, max_value=10000, value=100, step=1),
-    "業種": st.text_input("業種", placeholder="例: IT, 製造"),
-    "備考": st.text_area("備考", placeholder="例: 特記事項やニーズなど"),
+    "企業名": st.text_input("企業名", value="株式会社アクティブ"),
+    "従業員数": st.number_input("従業員数", min_value=1, max_value=10000, value=120, step=1),
+    "資本金(百万円)": st.number_input("資本金(百万円)", min_value=0, max_value=10000, value=500, step=1),
+    "業種": st.text_input("業種", value="IT"),
+    "備考": st.text_area("備考", value="新規事業に積極的"),
 }
 # 入力された情報をDataFrameに変換
 target_df = pd.DataFrame([target_info])
@@ -71,7 +71,7 @@ target_df = pd.DataFrame([target_info])
 button_pushed = st.button("過去事例検索")
 
 
-archive_df = pd.read_csv("./db/companies_archive.csv")
+archive_df = pd.read_csv("./db/companies_archive.csv", index_col=0)
 
 # レコメンド
 if button_pushed:

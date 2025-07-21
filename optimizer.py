@@ -83,36 +83,25 @@ class Optimizer:
 
     def create_qubo(self, pq_similarities, pp_similarities):
         """
-        Create a QUBO (Quadratic Unconstrained Binary Optimization) model based on the configuration.
-        This is a placeholder for the actual QUBO creation logic.
+        QUBO行列生成
         """
-        a = jm.Placeholder("a", shape=(self.archive_vecs.shape[0],))
-        s_target = jm.Placeholder("s_target", shape=(self.archive_vecs.shape[0],))
-        s_archive = jm.Placeholder("s_archive", shape=(self.archive_vecs.shape[0], self.archive_vecs.shape[0]))
-        lambda_d = jm.Placeholder("lambda_d", shape=())
-        L = jm.Placeholder("L", shape=())
-        x = jm.BinaryVar("x", shape=(self.archive_vecs.shape[0],))
-        p = jm.Element("p", belong_to=(0, pp_similarities.shape[0] - 1))
-        p1 = jm.Element("p1", belong_to=(0, pp_similarities.shape[0] - 1))
-        p2 = jm.Element("p2", belong_to=(0, pp_similarities.shape[0] - 1))
-
-        problem = jm.Problem("SalesSupportOptimization")
-        problem += - jm.sum(p, a[p] * s_target[p] * x[p]) + lambda_d * jm.sum([p1,p2], s_archive[p1,p2] * x[p1] * x[p2])
-        problem += jm.Constraint("num_selected", jm.sum(p, x[p]) == L)
-
-        instance_data = {
-            "a": np.ones(self.archive_vecs.shape[0]).tolist(),
-            "s_target": pq_similarities.tolist(),
-            "s_archive": pp_similarities.tolist(),
-            "lambda_d": float(self.config.lambda_d),
-            "L": int(self.config.L)
-        }
-        interpreter = jm.Interpreter(instance_data)
-        instance = interpreter.eval_problem(problem)
-        qubo, _ = instance.to_qubo(uniform_penalty_weight=self.config.lambda_c)
-        adapter = oj_ad.OMMXOpenJijSAAdapter(instance)
-
-        return qubo, adapter
+        Nassets = self.archive_vecs.shape[0]
+        QUBO = np.zeros((Nassets, Nassets))
+        # ペアワイズ相関（多様性）
+        for i in range(Nassets):
+            for j in range(Nassets):
+                if i != j:
+                    QUBO[i][j] += self.config.lambda_d * pp_similarities[i][j]
+        # スコア（類似度）
+        for i in range(Nassets):
+            QUBO[i][i] += -pq_similarities[i]
+        # 制約条件
+        for i in range(Nassets):
+            for j in range(Nassets):
+                QUBO[i][j] += self.config.lambda_c
+                if i == j:
+                    QUBO[i][j] += -self.config.lambda_c * 2 * self.config.L
+        return QUBO
 
     def create_linear_program(self, pq_similarities, pp_similarities): 
         """
@@ -133,20 +122,27 @@ class Optimizer:
         pq_similarities, pp_similarities = self.calculate_similarity()
 
         if self.config.mode == "多様性考慮（2次計画）":
-            # 2次計画の最適化
-            qubo, adapter = self.create_qubo(pq_similarities, pp_similarities)
+            # # まず線形計画で実行可能解を取得
+            # model_lp = self.create_linear_program(pq_similarities, pp_similarities)
+            # model_lp.solve()
+            # x_vars_lp = [v for v in model_lp.variables() if v.name.startswith("x_")]
+            # x_vars_lp.sort(key=lambda v: int(v.name.split('_')[1]))
+            # initial_x = [int(v.varValue == 1) for v in x_vars_lp]
+
+            # 2次計画の最適化（線形計画の解を初期値に）
+            QUBO = self.create_qubo(pq_similarities, pp_similarities)
             sampler = oj.SASampler()
-            res = sampler.sample_qubo(Q=qubo, num_reads=100, num_sweeps=1000)
-            sampleset = adapter.decode_to_sampleset(res)
-            best_sample = sampleset.best_feasible_unrelaxed
-            x_value: dict[tuple[int, int], float] = best_sample.extract_decision_variables("x")
-            # インデックスがint型の場合に変換
-            nonzero_keys = [k if isinstance(k, int) else k[0] for k, v in x_value.items() if v > 0.5]
+            # initial_state = {i: v for i, v in enumerate(initial_x)}
+            # res = sampler.sample_qubo(Q=QUBO, num_reads=1000, num_sweeps=1000, initial_state=initial_state)
+            res = sampler.sample_qubo(Q=QUBO, num_reads=1000, num_sweeps=1000)
+            best_sample = res.first
+            nonzero_keys = [k if isinstance(k, int) else k[0] for k, v in best_sample.sample.items() if v > 0.5]
             return nonzero_keys
         else:
             # 線形計画の最適化
             model = self.create_linear_program(pq_similarities, pp_similarities)
             model.solve()
             x_vars = [v for v in model.variables() if v.name.startswith("x_")]
+            x_vars.sort(key=lambda v: int(v.name.split('_')[1]))
             selected_indices = [i for i, v in enumerate(x_vars) if v.varValue == 1]
             return selected_indices
