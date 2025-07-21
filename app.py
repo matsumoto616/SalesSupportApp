@@ -76,19 +76,16 @@ archive_df = pd.read_csv("./db/companies_archive.csv", index_col=0)
 # レコメンド
 if button_pushed:
     encoder = Encoder()
-    try:
-        encoder.load_weights(path="./weights/triplet_encoder_best.pth")
-    except FileNotFoundError:
-        # Google Driveの重みファイルID
-        gdrive_url = "https://drive.google.com/drive/u/2/folders/1KpREcxmSMHInE9axOxoGqH8zaLIWyq0A?ths=true"
-        weights_path = "triplet_encoder_best.pth"
-        # weightsディレクトリがなければ作成
-        # os.makedirs(os.path.dirname(weights_path), exist_ok=True)
-        # 重みファイルがなければgdownでダウンロード
-        if not os.path.exists(weights_path):
-            with st.spinner("重みファイルをダウンロード中..."):
-                gdown.download(gdrive_url, weights_path, quiet=False)
-        encoder.load_weights(weights_path)
+    # Google Driveの重みファイルID
+    gdrive_url = "https://drive.google.com/drive/u/2/folders/1KpREcxmSMHInE9axOxoGqH8zaLIWyq0A?ths=true"
+    weights_path = "triplet_encoder_best.pth"
+    # weightsディレクトリがなければ作成
+    # os.makedirs(os.path.dirname(weights_path), exist_ok=True)
+    # 重みファイルがなければgdownでダウンロード
+    if not os.path.exists(weights_path):
+        with st.spinner("重みファイルをダウンロード中..."):
+            gdown.download(gdrive_url, weights_path, quiet=False)
+    encoder.load_weights(weights_path)
     encoder.eval()
     tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")
     archive_dataset = CompanyDataset(archive_df, tokenizer)
