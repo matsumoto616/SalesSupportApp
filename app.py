@@ -80,7 +80,7 @@ if button_pushed:
         encoder.load_weights(path="./weights/triplet_encoder_best.pth")
     except FileNotFoundError:
         # Google Driveの重みファイルID
-        gdrive_url = "https://drive.google.com/uc?id=1a1PPVXInIcNsOJSM7JgEvcRmY7y8FyVD"
+        gdrive_url = "https://drive.google.com/file/d/1aXwMcmng1YYX0HDckHxpHKDYpUCttkH3/view?usp=drive_link"
         weights_path = "triplet_encoder_best.pth"
         # weightsディレクトリがなければ作成
         # os.makedirs(os.path.dirname(weights_path), exist_ok=True)
