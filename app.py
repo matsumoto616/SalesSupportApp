@@ -77,7 +77,7 @@ archive_df = pd.read_csv("./db/companies_archive.csv", index_col=0)
 if button_pushed:
     encoder = Encoder()
     # Google Driveの重みファイルID
-    gdrive_url = "https://drive.google.com/drive/u/2/folders/1KpREcxmSMHInE9axOxoGqH8zaLIWyq0A?ths=true"
+    gdrive_url = "https://drive.google.com/uc?id=1aXwMcmng1YYX0HDckHxpHKDYpUCttkH3"
     weights_path = "triplet_encoder_best.pth"
     # weightsディレクトリがなければ作成
     # os.makedirs(os.path.dirname(weights_path), exist_ok=True)
