@@ -40,7 +40,7 @@ class Encoder(nn.Module):
         """
         学習済み重みをロードする（推論時用）
         """
-        self.load_state_dict(torch.load(path, map_location=device))
+        self.load_state_dict(torch.load(path, map_location=device, weights_only=False))
         self.eval()
 
     def forward(self, input_ids, attention_mask, numeric):
