@@ -43,11 +43,11 @@ sidebar.markdown(
 sidebar.divider()
 
 # サイドバーの各種入力項目
-mode = sidebar.radio("モード選択", ["新規営業", "有料移行サポート", "離脱防止サポート"])
+mode = sidebar.radio("モード選択", ["多様性考慮（2次計画）", "多様性非考慮（線形計画）"])
 # K = sidebar.number_input("レコメンド数", min_value=1, max_value=10, value=5, step=1)
 L = sidebar.number_input("参照過去事例数", min_value=1, max_value=10, value=5, step=1)
-log_lambda_d = sidebar.number_input("多様性重要度　log(λ_d)", min_value=-5, max_value=5, value=-1, step=1)
-log_lamnda_c = sidebar.number_input("制約条件重要度　log(λ_c)", min_value=0, max_value=5, value=3, step=1)
+log_lambda_d = sidebar.number_input("多様性重要度　log(λ_d)　※2次計画時のみ", min_value=-5, max_value=5, value=-1, step=1)
+log_lamnda_c = sidebar.number_input("制約条件重要度　log(λ_c)　※2次計画時のみ", min_value=0, max_value=5, value=3, step=1)
 
 # 対象顧客の入力
 st.subheader("対象顧客情報")
@@ -112,10 +112,7 @@ if button_pushed:
     optimizer = Optimizer(archive_vecs, target_vec, config)
 
     # 最適化を実行
-    best_sample = optimizer.optimize()
-    x_value: dict[tuple[int, int], float] = best_sample.extract_decision_variables("x")
-    # インデックスがint型の場合に変換
-    nonzero_keys = [k if isinstance(k, int) else k[0] for k, v in x_value.items() if v > 0.5]
+    nonzero_keys = optimizer.optimize()
 
     # 選ばれた行だけ表示
     selected_df = archive_df.loc[nonzero_keys]

@@ -12,6 +12,7 @@ dependencies = [
     "ommx-openjij-adapter>=2.0.2",
     "openjij>=0.9.2",
     "pandas>=2.3.0",
+    "pulp>=3.2.1",
     "streamlit>=1.46.1",
     "torch==2.7.1",
     "torchvision==0.22.1",

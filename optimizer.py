@@ -4,19 +4,15 @@ import openjij as oj
 import jijmodeling as jm
 import ommx_openjij_adapter as oj_ad
 import pandas as pd
+import pulp
 
 @dataclass
 class OptimizerConfig:
     """
     Configuration for the optimizer.
     """
-    mode: str = "新規営業"  # Available modes: "新規営業", "有料移行サポート", "離脱防止サポート"
-    K: int = 5
-    L: int = 5
-    lambda_d: float = 1
-    lambda_c: float = 1
 
-    def __init__(self, mode: str = "新規営業", K: int = 5, L: int = 5, lambda_d: float = 1, lambda_c: float = 1):
+    def __init__(self, mode: str = "多様性考慮（2次計画）", K: int = 5, L: int = 5, lambda_d: float = 1, lambda_c: float = 1):
         self.mode = mode
         self.K = K
         self.L = L
@@ -27,8 +23,8 @@ class OptimizerConfig:
         """
         Validate the configuration parameters.
         """
-        if self.mode not in ["新規営業", "有料移行サポート", "離脱防止サポート"]:
-            raise ValueError("Invalid mode. Choose from '新規営業', '有料移行サポート', '離脱防止サポート'.")
+        if self.mode not in ["多様性考慮（2次計画）", "多様性非考慮（線形計画）"]:
+            raise ValueError("Invalid mode. Choose from '多様性考慮（2次計画）', '多様性非考慮（線形計画）'")
         if self.K <= 0:
             raise ValueError("K must be a positive integer.")
         if self.L <= 0:
@@ -118,15 +114,39 @@ class Optimizer:
 
         return qubo, adapter
 
+    def create_linear_program(self, pq_similarities, pp_similarities): 
+        """
+        Create a linear program based on the configuration.
+        This is a placeholder for the actual linear program creation logic.
+        """
+        model = pulp.LpProblem("SalesSupportOptimization", pulp.LpMaximize)
+        x = pulp.LpVariable.dicts("x", range(self.archive_vecs.shape[0]), cat='Binary')
+        model += pulp.lpSum(pq_similarities[i] * x[i] for i in range(self.archive_vecs.shape[0]))
+        model += pulp.lpSum(x[i] for i in range(self.archive_vecs.shape[0])) == self.config.L
+        
+        return model
+
     def optimize(self):
         """
         Perform the optimization based on the current configuration.
         """
         pq_similarities, pp_similarities = self.calculate_similarity()
-        qubo, adapter = self.create_qubo(pq_similarities, pp_similarities)
-        sampler = oj.SASampler()
-        res = sampler.sample_qubo(Q=qubo, num_reads=100, num_sweeps=1000)
-        sampleset = adapter.decode_to_sampleset(res)
-        best_sample = sampleset.best_feasible_unrelaxed
 
-        return best_sample        
+        if self.config.mode == "多様性考慮（2次計画）":
+            # 2次計画の最適化
+            qubo, adapter = self.create_qubo(pq_similarities, pp_similarities)
+            sampler = oj.SASampler()
+            res = sampler.sample_qubo(Q=qubo, num_reads=100, num_sweeps=1000)
+            sampleset = adapter.decode_to_sampleset(res)
+            best_sample = sampleset.best_feasible_unrelaxed
+            x_value: dict[tuple[int, int], float] = best_sample.extract_decision_variables("x")
+            # インデックスがint型の場合に変換
+            nonzero_keys = [k if isinstance(k, int) else k[0] for k, v in x_value.items() if v > 0.5]
+            return nonzero_keys
+        else:
+            # 線形計画の最適化
+            model = self.create_linear_program(pq_similarities, pp_similarities)
+            model.solve()
+            x_vars = [v for v in model.variables() if v.name.startswith("x_")]
+            selected_indices = [i for i, v in enumerate(x_vars) if v.varValue == 1]
+            return selected_indices
