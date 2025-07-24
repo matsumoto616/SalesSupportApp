@@ -131,7 +131,7 @@ class Optimizer:
 
             # 2次計画の最適化（線形計画の解を初期値に）
             QUBO = self.create_qubo(pq_similarities, pp_similarities)
-            sampler = oj.SQASampler()
+            sampler = oj.SASampler()
             initial_state = {i: v for i, v in enumerate(initial_x)}
             res = sampler.sample_qubo(Q=QUBO, num_reads=1000, num_sweeps=1000, initial_state=initial_state)
             res = sampler.sample_qubo(Q=QUBO, num_reads=1000, num_sweeps=1000)
