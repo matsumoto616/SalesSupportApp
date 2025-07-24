@@ -46,11 +46,11 @@ sidebar.divider()
 mode = sidebar.radio("モード選択", ["多様性考慮（2次計画）", "多様性非考慮（線形計画）"])
 # K = sidebar.number_input("レコメンド数", min_value=1, max_value=10, value=5, step=1)
 L = sidebar.number_input("参照過去事例数", min_value=1, max_value=10, value=5, step=1)
-log_lambda_d = sidebar.number_input("多様性重要度　log(λ_d)　※2次計画時のみ", min_value=-5, max_value=5, value=-2, step=1)
+log_lambda_d = sidebar.number_input("多様性重要度　log(λ_d)　※2次計画時のみ", min_value=-5, max_value=5, value=-1, step=1)
 log_lamnda_c = sidebar.number_input("制約条件重要度　log(λ_c)　※2次計画時のみ", min_value=0, max_value=5, value=1, step=1)
 
 # メイン部分
-col1, col2 = st.columns(spec=(0.5,0.5),gap="large")
+col1, col2 = st.columns(spec=(0.4,0.6),gap="large")
 
 # 対象顧客の入力
 col1.subheader("対象顧客情報")

@@ -122,19 +122,19 @@ class Optimizer:
         pq_similarities, pp_similarities = self.calculate_similarity()
 
         if self.config.mode == "多様性考慮（2次計画）":
-            # まず線形計画で実行可能解を取得
-            model_lp = self.create_linear_program(pq_similarities, pp_similarities)
-            model_lp.solve()
-            x_vars_lp = [v for v in model_lp.variables() if v.name.startswith("x_")]
-            x_vars_lp.sort(key=lambda v: int(v.name.split('_')[1]))
-            initial_x = [int(v.varValue == 1) for v in x_vars_lp]
+            # # まず線形計画で実行可能解を取得
+            # model_lp = self.create_linear_program(pq_similarities, pp_similarities)
+            # model_lp.solve()
+            # x_vars_lp = [v for v in model_lp.variables() if v.name.startswith("x_")]
+            # x_vars_lp.sort(key=lambda v: int(v.name.split('_')[1]))
+            # initial_x = [int(v.varValue == 1) for v in x_vars_lp]
 
             # 2次計画の最適化（線形計画の解を初期値に）
             QUBO = self.create_qubo(pq_similarities, pp_similarities)
-            sampler = oj.SASampler()
-            initial_state = {i: v for i, v in enumerate(initial_x)}
-            res = sampler.sample_qubo(Q=QUBO, num_reads=1000, num_sweeps=1000, initial_state=initial_state)
-            res = sampler.sample_qubo(Q=QUBO, num_reads=1000, num_sweeps=1000)
+            sampler = oj.SQASampler()
+            # initial_state = {i: v for i, v in enumerate(initial_x)}
+            # res = sampler.sample_qubo(Q=QUBO, num_reads=1000, num_sweeps=1000, initial_state=initial_state)
+            res = sampler.sample_qubo(Q=QUBO, num_reads=100, num_sweeps=1000)
             best_sample = res.first
             nonzero_keys = [k if isinstance(k, int) else k[0] for k, v in best_sample.sample.items() if v > 0.5]
             return nonzero_keys
