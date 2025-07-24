@@ -20,7 +20,7 @@ class CompanyDataset(Dataset):
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
         input_ids, attn_mask = self._get_text_tensor(row)
-        numeric_tensor = torch.tensor([float(row['資本金(百万円)']), float(row['従業員数'])], dtype=torch.float)
+        numeric_tensor = torch.tensor([float(row['売上高(百万円)']), float(row['従業員数'])], dtype=torch.float)
         return input_ids, attn_mask, numeric_tensor
     
 
@@ -49,7 +49,7 @@ class TripletCompanyDataset(Dataset):
 
         def get_row_data(row):
             input_ids, attn_mask = self._get_text_tensor(row)
-            numeric_tensor = torch.tensor([float(row['資本金(百万円)']), float(row['従業員数'])], dtype=torch.float)
+            numeric_tensor = torch.tensor([float(row['売上高(百万円)']), float(row['従業員数'])], dtype=torch.float)
 
             return input_ids, attn_mask, numeric_tensor
 

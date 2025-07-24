@@ -135,4 +135,4 @@ if __name__ == "__main__":
     dataset = TripletCompanyDataset(df, tokenizer)
 
     model = Encoder()
-    train_encoder(model, dataset, epochs=20, batch_size=8, lr=1e-4, device='cuda' if torch.cuda.is_available() else 'cpu')
+    train_encoder(model, dataset, epochs=50, batch_size=8, lr=1e-4, device='cuda' if torch.cuda.is_available() else 'cpu')

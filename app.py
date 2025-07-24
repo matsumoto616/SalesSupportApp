@@ -46,33 +46,40 @@ sidebar.divider()
 mode = sidebar.radio("モード選択", ["多様性考慮（2次計画）", "多様性非考慮（線形計画）"])
 # K = sidebar.number_input("レコメンド数", min_value=1, max_value=10, value=5, step=1)
 L = sidebar.number_input("参照過去事例数", min_value=1, max_value=10, value=5, step=1)
-log_lambda_d = sidebar.number_input("多様性重要度　log(λ_d)　※2次計画時のみ", min_value=-5, max_value=5, value=-1, step=1)
-log_lamnda_c = sidebar.number_input("制約条件重要度　log(λ_c)　※2次計画時のみ", min_value=0, max_value=5, value=2, step=1)
+log_lambda_d = sidebar.number_input("多様性重要度　log(λ_d)　※2次計画時のみ", min_value=-5, max_value=5, value=-2, step=1)
+log_lamnda_c = sidebar.number_input("制約条件重要度　log(λ_c)　※2次計画時のみ", min_value=0, max_value=5, value=1, step=1)
+
+# メイン部分
+col1, col2 = st.columns(spec=(0.5,0.5),gap="large")
 
 # 対象顧客の入力
-st.subheader("対象顧客情報")
-st.markdown(
+col1.subheader("対象顧客情報")
+col1.markdown(
     """
     以下の情報を入力してください。これらの情報は、過去の事例と比較してレコメンドを行うために使用されます。
     """
 )
 # 対象顧客の情報を入力するためのテキスト入力フィールド
 target_info = {
-    "企業名": st.text_input("企業名", value="株式会社アクティブ"),
-    "従業員数": st.number_input("従業員数", min_value=1, max_value=10000, value=120, step=1),
-    "資本金(百万円)": st.number_input("資本金(百万円)", min_value=0, max_value=10000, value=500, step=1),
-    "業種": st.text_input("業種", value="IT"),
-    "備考": st.text_area("備考", value="新規事業に積極的"),
+    "企業名": col1.text_input("企業名", value="株式会社アクティブ"),
+    "従業員数": col1.number_input("従業員数", min_value=1, max_value=10000, value=120, step=1),
+    "売上高(百万円)": col1.number_input("売上高(百万円)", min_value=0, max_value=10000, value=500, step=1),
+    "業種": col1.text_input("業種", value="IT"),
+    "備考": col1.text_area("備考", value="新規事業に積極的"),
 }
 # 入力された情報をDataFrameに変換
 target_df = pd.DataFrame([target_info])
 
 # 検索ボタン
-button_pushed = st.button("過去事例検索")
-
-
+button_pushed = sidebar.button("過去事例検索")
 archive_df = pd.read_csv("./db/companies_archive.csv", index_col=0)
 
+col2.subheader("参考となる過去事例")
+col2.markdown(
+    """
+    サイドバーにある過去事例検索ボタンを押すと、以下に検索結果が表示されます。
+    """
+)
 # レコメンド
 if button_pushed:
     encoder = Encoder()
@@ -116,8 +123,8 @@ if button_pushed:
 
     # 選ばれた行だけ表示
     selected_df = archive_df.loc[nonzero_keys]
-    st.subheader("参考となる過去事例")
-    st.dataframe(selected_df, use_container_width=True, hide_index=True)
+    col2.caption("検索結果")
+    col2.dataframe(selected_df, use_container_width=True, hide_index=True)
     print("最適化結果:", nonzero_keys)
 
 # 過去事例の表示
